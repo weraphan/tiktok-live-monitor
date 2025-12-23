@@ -1,84 +1,72 @@
-import asyncio
+import time
 import json
-import os
-from datetime import datetime, timedelta, timezone
-from TikTokLive import TikTokLiveClient
+import datetime
+import requests
 
-CHECK_INTERVAL_SECONDS = 5 * 60
-TASK_TIMEOUT_SECONDS = 30
 STATUS_FILE = "statuslive.json"
+CHECK_INTERVAL = 30  # วินาที
 
 
-def log(msg: str):
-    print(msg, flush=True)
-
-
-async def check_user_live(username: str) -> bool | None:
-    unique_id = username if username.startswith("@") else f"@{username}"
-    client = TikTokLiveClient(unique_id=unique_id)
+def check_tiktok_live():
+    """
+    🔍 ใส่ logic ตรวจ live ของคุณตรงนี้
+    return True / False
+    """
     try:
-        return await asyncio.wait_for(client.is_live(), timeout=15)
+        # ตัวอย่าง dummy (ให้เปลี่ยนเป็นโค้ดจริงของคุณ)
+        # response = requests.get("https://example.com")
+        # return response.status_code == 200
+
+        return False  # ← ค่าเริ่มต้น (ยังไม่ live)
+
     except Exception as e:
-        log(f"⚠️ @{username}: ตรวจสอบไม่ได้ ({type(e).__name__})")
+        print("❌ check error:", e)
+        return False
+
+
+def save_status(is_live):
+    data = {
+        "is_live": is_live,
+        "last_check": datetime.datetime.utcnow().isoformat()
+    }
+
+    with open(STATUS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def load_last_status():
+    try:
+        with open(STATUS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f).get("is_live", None)
+    except:
         return None
 
 
-async def check_and_update_user(user: dict):
-    username = user.get("name")
-    result = await check_user_live(username)
-    if result is None:
-        user["status"] = "Offline"
+def monitor():
+    last_status = load_last_status()
+    current_status = check_tiktok_live()
+
+    if current_status != last_status:
+        print("🔔 status changed:", current_status)
+        save_status(current_status)
     else:
-        user["status"] = "Online" if result else "Offline"
-
-    log(f"→ @{username}: {user['status']}")
+        print("⏱ no change | live =", current_status)
 
 
-async def run_check_cycle(cycle: int):
-    th_tz = timezone(timedelta(hours=7))
-    log("\n" + "=" * 40)
-    log(f"🔄 รอบที่ {cycle}")
-    log(f"🕒 {datetime.now(th_tz).strftime('%H:%M:%S')} (TH)")
-    log("=" * 40)
+# ===============================
+# 🚀 ENTRY POINT
+# ===============================
+print("🚀 TikTok Live Monitor started")
 
-    if not os.path.isfile(STATUS_FILE):
-        log(f"❌ ไม่พบไฟล์ {STATUS_FILE}")
-        return
+while True:
+    try:
+        monitor()
+        time.sleep(CHECK_INTERVAL)
 
-    with open(STATUS_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    except KeyboardInterrupt:
+        print("🛑 stopped by user")
+        break
 
-    statuses = data.get("statuses", [])
-    if not statuses:
-        log("⚠️ ไม่มีรายชื่อผู้ใช้")
-        return
-
-    tasks = []
-    for user in statuses:
-        tasks.append(
-            asyncio.wait_for(
-                check_and_update_user(user),
-                timeout=TASK_TIMEOUT_SECONDS
-            )
-        )
-
-    await asyncio.gather(*tasks, return_exceptions=True)
-
-    data["lastUpdated"] = datetime.now(timezone.utc).isoformat()
-    with open(STATUS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-    log("💾 อัปเดต statuslive.json สำเร็จ")
-
-
-async def main():
-    cycle = 0
-    while True:
-        cycle += 1
-        await run_check_cycle(cycle)
-        log(f"⏳ รอ {CHECK_INTERVAL_SECONDS // 60} นาที...\n")
-        await asyncio.sleep(CHECK_INTERVAL_SECONDS)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    except Exception as e:
+        print("🔥 unexpected error:", e)
+        time.sleep(10)

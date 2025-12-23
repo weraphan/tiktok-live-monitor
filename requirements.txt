@@ -1,2 +1,3 @@
-TikTokLive
 requests
+selenium
+beautifulsoup4
